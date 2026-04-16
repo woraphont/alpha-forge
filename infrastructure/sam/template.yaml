@@ -1,0 +1,161 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: AlphaForge — US Stock Signal Engine (SAA-C03 hands-on project)
+
+Globals:
+  Function:
+    Timeout: 300          # 5 min max (yfinance + AI calls)
+    MemorySize: 512
+    Runtime: python3.12
+    Architectures: [x86_64]
+    Environment:
+      Variables:
+        DYNAMODB_TABLE: !Ref SignalsTable
+        WATCHLIST: "AAPL,MSFT,NVDA,GOOGL,TSLA,SPY"
+        STRONG_BUY_THRESHOLD: "0.75"
+        BUY_THRESHOLD: "0.55"
+        WATCH_THRESHOLD: "0.35"
+        LOG_LEVEL: INFO
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+
+Conditions:
+  IsProd: !Equals [!Ref Environment, prod]
+
+Resources:
+
+  # ───── MAIN ANALYZER LAMBDA ─────
+  AnalyzerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "alpha-forge-analyzer-${Environment}"
+      CodeUri: ../../lambdas/analyzer/
+      Handler: handler.lambda_handler
+      Description: Analyzes US stock signals (triggered by EventBridge)
+      Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: "/alpha-forge/*"
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SignalsTable
+      Events:
+        PreMarketScan:
+          Type: Schedule
+          Properties:
+            Name: !Sub "alpha-forge-pre-market-${Environment}"
+            Schedule: cron(0 14 ? * MON-FRI *)    # 09:00 EST (14:00 UTC)
+            Description: Pre-market scan
+            Enabled: !If [IsProd, true, false]    # disable in dev
+        MarketOpenScan:
+          Type: Schedule
+          Properties:
+            Name: !Sub "alpha-forge-market-open-${Environment}"
+            Schedule: cron(30 14 ? * MON-FRI *)   # 09:30 EST (14:30 UTC)
+            Description: Market open scan
+            Enabled: !If [IsProd, true, false]
+        MarketCloseScan:
+          Type: Schedule
+          Properties:
+            Name: !Sub "alpha-forge-market-close-${Environment}"
+            Schedule: cron(15 21 ? * MON-FRI *)   # 16:15 EST (21:15 UTC)
+            Description: Market close scan
+            Enabled: !If [IsProd, true, false]
+
+  # ───── API LAMBDA ─────
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "alpha-forge-api-${Environment}"
+      CodeUri: ../../lambdas/api/
+      Handler: handler.lambda_handler
+      Description: Read-only REST API for dashboard
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref SignalsTable
+      Events:
+        GetLatest:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AlphaForgeApi
+            Path: /signals/latest
+            Method: GET
+        GetSymbol:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AlphaForgeApi
+            Path: /signals/{symbol}
+            Method: GET
+        GetSummary:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AlphaForgeApi
+            Path: /summary
+            Method: GET
+
+  # ───── API GATEWAY ─────
+  AlphaForgeApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub "alpha-forge-api-${Environment}"
+      StageName: !Ref Environment
+      Cors:
+        AllowMethods: "'GET,OPTIONS'"
+        AllowHeaders: "'Content-Type'"
+        AllowOrigin: "'*'"
+
+  # ───── DYNAMODB TABLE ─────
+  SignalsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "alpha-signals-${Environment}"
+      BillingMode: PAY_PER_REQUEST    # no capacity planning needed
+      AttributeDefinitions:
+        - AttributeName: symbol
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: symbol
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true                  # auto-delete after 30 days (cost saving)
+
+  # ───── CLOUDWATCH ALARMS ─────
+  AnalyzerErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "alpha-forge-analyzer-errors-${Environment}"
+      AlarmDescription: Lambda error count too high
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref AnalyzerFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 3
+      ComparisonOperator: GreaterThanThreshold
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${AlphaForgeApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
+    Export:
+      Name: !Sub "AlphaForge-ApiUrl-${Environment}"
+
+  AnalyzerFunctionArn:
+    Description: Analyzer Lambda ARN
+    Value: !GetAtt AnalyzerFunction.Arn
+
+  SignalsTableName:
+    Description: DynamoDB table name
+    Value: !Ref SignalsTable
+    Export:
+      Name: !Sub "AlphaForge-SignalsTable-${Environment}"

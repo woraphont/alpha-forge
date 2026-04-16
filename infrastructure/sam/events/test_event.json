@@ -1,0 +1,6 @@
+{
+  "source": "aws.events",
+  "detail-type": "Scheduled Event",
+  "detail": {},
+  "comment": "Use: sam local invoke AnalyzerFunction --event events/test_event.json"
+}
