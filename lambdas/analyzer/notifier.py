@@ -1,6 +1,6 @@
 """
 AlphaForge — Notifier
-Sends LINE Notify alerts for high-confidence signals.
+Sends Telegram alerts for high-confidence signals.
 Secrets fetched from SSM Parameter Store (never hardcoded).
 """
 import logging
@@ -12,6 +12,7 @@ import requests
 logger = logging.getLogger(__name__)
 
 _ssm_client = None
+_TELEGRAM_API = "https://api.telegram.org/bot{token}/sendMessage"
 
 
 def _get_ssm_client() -> Any:
@@ -28,8 +29,8 @@ def _get_secret(param_name: str) -> str:
     return response["Parameter"]["Value"]
 
 
-def _format_line_message(symbol: str, result: dict) -> str:
-    """Format a concise LINE Notify message."""
+def _format_telegram_message(symbol: str, result: dict) -> str:
+    """Format a Telegram HTML alert message."""
     score = result["score"]
     signal = result["signal"]
     regime = result.get("regime", "UNKNOWN")
@@ -43,44 +44,49 @@ def _format_line_message(symbol: str, result: dict) -> str:
     trend_sig = ind.get("ema", {}).get("signal", "N/A")
     supertrend = ind.get("supertrend", {}).get("direction", "N/A")
     vwap_above = ind.get("vwap", {}).get("above_vwap", False)
+    vwap_label = "Above ✅" if vwap_above else "Below ❌"
 
     lines = [
-        f"\n{emoji} AlphaForge Signal",
-        f"",
-        f"📊 {symbol}",
-        f"Signal: {signal}",
-        f"Score:  {score:.3f}",
-        f"Regime: {regime}",
-        f"",
-        f"Indicators:",
-        f"• Trend:      {trend_sig}",
-        f"• Supertrend: {supertrend}",
-        f"• RSI:        {rsi_val}",
-        f"• MACD:       {macd_sig}",
-        f"• VWAP:       {'Above ✅' if vwap_above else 'Below ❌'}",
+        f"{emoji} <b>AlphaForge Signal</b>",
+        "",
+        f"📊 <b>{symbol}</b>",
+        f"Signal: <code>{signal}</code>",
+        f"Score:  <code>{score:.3f}</code>",
+        f"Regime: <code>{regime}</code>",
+        "",
+        "<b>Indicators:</b>",
+        f"• Trend:      <code>{trend_sig}</code>",
+        f"• Supertrend: <code>{supertrend}</code>",
+        f"• RSI:        <code>{rsi_val}</code>",
+        f"• MACD:       <code>{macd_sig}</code>",
+        f"• VWAP:       {vwap_label}",
     ]
 
     ai_layer = result.get("ai_layer", {})
     if ai_layer.get("phase") != "PHASE_1_PLACEHOLDER":
         finbert = ai_layer.get("finbert", 0.5)
-        lines.append(f"• FinBERT:    {finbert:.2f}")
+        lines.append(f"• FinBERT:    <code>{finbert:.2f}</code>")
 
     return "\n".join(lines)
 
 
 def send_alert(symbol: str, result: dict) -> None:
     """
-    Send LINE Notify alert for a strong signal.
+    Send Telegram alert for a strong signal.
     Only called when score >= STRONG_BUY_THRESHOLD (0.75).
     """
     try:
-        token = _get_secret("/alpha-forge/LINE_NOTIFY_TOKEN")
-        message = _format_line_message(symbol, result)
+        token = _get_secret("/alpha-forge/TELEGRAM_BOT_TOKEN")
+        chat_id = _get_secret("/alpha-forge/TELEGRAM_CHAT_ID")
+        message = _format_telegram_message(symbol, result)
 
         response = requests.post(
-            "https://notify-api.line.me/api/notify",
-            headers={"Authorization": f"Bearer {token}"},
-            data={"message": message},
+            _TELEGRAM_API.format(token=token),
+            json={
+                "chat_id": chat_id,
+                "text": message,
+                "parse_mode": "HTML",
+            },
             timeout=10,
         )
 

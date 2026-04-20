@@ -54,7 +54,8 @@ alpha-forge/
 ```
 
 ## Secrets — ALL stored in SSM Parameter Store
-/alpha-forge/LINE_NOTIFY_TOKEN
+/alpha-forge/TELEGRAM_BOT_TOKEN
+/alpha-forge/TELEGRAM_CHAT_ID
 /alpha-forge/ANTHROPIC_API_KEY
 /alpha-forge/OPENAI_API_KEY
 /alpha-forge/GEMINI_API_KEY

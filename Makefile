@@ -99,7 +99,8 @@ logs-dev:
 # ───── SECRETS SETUP ─────
 setup-secrets:
 	@echo "Uploading secrets to SSM Parameter Store..."
-	@[ -n "$(LINE_TOKEN)" ] && aws ssm put-parameter --name "/alpha-forge/LINE_NOTIFY_TOKEN" --type "SecureString" --value "$(LINE_TOKEN)" --overwrite || echo "Skip LINE_TOKEN"
+	@[ -n "$(TELEGRAM_BOT_TOKEN)" ] && aws ssm put-parameter --name "/alpha-forge/TELEGRAM_BOT_TOKEN" --type "SecureString" --value "$(TELEGRAM_BOT_TOKEN)" --overwrite || echo "Skip TELEGRAM_BOT_TOKEN"
+	@[ -n "$(TELEGRAM_CHAT_ID)" ] && aws ssm put-parameter --name "/alpha-forge/TELEGRAM_CHAT_ID" --type "SecureString" --value "$(TELEGRAM_CHAT_ID)" --overwrite || echo "Skip TELEGRAM_CHAT_ID"
 	@[ -n "$(GEMINI_KEY)" ] && aws ssm put-parameter --name "/alpha-forge/GEMINI_API_KEY" --type "SecureString" --value "$(GEMINI_KEY)" --overwrite || echo "Skip GEMINI_KEY"
 	@[ -n "$(OPENAI_KEY)" ] && aws ssm put-parameter --name "/alpha-forge/OPENAI_API_KEY" --type "SecureString" --value "$(OPENAI_KEY)" --overwrite || echo "Skip OPENAI_KEY"
 	@[ -n "$(ANTHROPIC_KEY)" ] && aws ssm put-parameter --name "/alpha-forge/ANTHROPIC_API_KEY" --type "SecureString" --value "$(ANTHROPIC_KEY)" --overwrite || echo "Skip ANTHROPIC_KEY"

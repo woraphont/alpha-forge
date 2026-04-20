@@ -7,7 +7,7 @@ Tier 2 (Medium)  → GPT-4o-mini         ~$0.00015/1K tokens
 Tier 3 (Complex) → Claude Haiku 4.5    ~$0.00025/1K tokens
 Phase 4 upgrade  → AWS Bedrock Claude  (replace direct Anthropic API)
 
-Fallback: Gemini fail → GPT-mini → Claude Haiku → log + LINE alert
+Fallback: Gemini fail → GPT-mini → Claude Haiku → log + Telegram alert
 """
 import json
 import logging
