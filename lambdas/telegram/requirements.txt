@@ -1,0 +1,6 @@
+# AlphaForge — Telegram Lambda dependencies
+yfinance==0.2.61
+pandas==2.2.2
+numpy==1.26.4
+requests==2.32.3
+boto3==1.34.150

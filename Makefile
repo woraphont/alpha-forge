@@ -1,6 +1,6 @@
 .PHONY: dev dev-down test deploy-dev deploy-prod \
         tf-init tf-plan-dev tf-plan-prod tf-apply-dev tf-apply-prod \
-        logs invoke-local setup-secrets backtest create-table
+        logs invoke-local setup-secrets setup-webhook backtest create-table
 
 # ───── LOCAL DEV ─────
 dev:
@@ -105,6 +105,15 @@ setup-secrets:
 	@[ -n "$(OPENAI_KEY)" ] && aws ssm put-parameter --name "/alpha-forge/OPENAI_API_KEY" --type "SecureString" --value "$(OPENAI_KEY)" --overwrite || echo "Skip OPENAI_KEY"
 	@[ -n "$(ANTHROPIC_KEY)" ] && aws ssm put-parameter --name "/alpha-forge/ANTHROPIC_API_KEY" --type "SecureString" --value "$(ANTHROPIC_KEY)" --overwrite || echo "Skip ANTHROPIC_KEY"
 	@echo "✅ Secrets uploaded"
+
+# ───── TELEGRAM WEBHOOK SETUP ─────
+setup-webhook:
+	@echo "Registering Telegram webhook..."
+	@[ -n "$(TELEGRAM_BOT_TOKEN)" ] && [ -n "$(WEBHOOK_URL)" ] && \
+	curl -s -X POST "https://api.telegram.org/bot$(TELEGRAM_BOT_TOKEN)/setWebhook" \
+		-H "Content-Type: application/json" \
+		-d "{\"url\": \"$(WEBHOOK_URL)/telegram\"}" | python3 -m json.tool \
+	|| echo "Usage: make setup-webhook TELEGRAM_BOT_TOKEN=xxx WEBHOOK_URL=https://your-api-gw.amazonaws.com/dev"
 
 # ───── BACKTEST ─────
 backtest:

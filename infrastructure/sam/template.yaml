@@ -95,6 +95,27 @@ Resources:
             Path: /summary
             Method: GET
 
+  # ───── TELEGRAM WEBHOOK LAMBDA ─────
+  TelegramFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "alpha-forge-telegram-${Environment}"
+      CodeUri: ../../lambdas/telegram/
+      Handler: handler.handler
+      Timeout: 60
+      MemorySize: 256
+      Description: Telegram webhook — on-demand US stock analysis (any ticker)
+      Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: "/alpha-forge/*"
+      Events:
+        TelegramWebhook:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AlphaForgeApi
+            Path: /telegram
+            Method: POST
+
   # ───── API GATEWAY ─────
   AlphaForgeApi:
     Type: AWS::Serverless::Api
