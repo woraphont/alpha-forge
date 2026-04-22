@@ -84,16 +84,16 @@ BIG CYCLE CONTEXT (April 2026):
   - AI sector in early bubble stage (Dalio, 2025)
   - US federal debt/GDP at historic highs → Rule 1 violation risk
 
-OUTPUT — JSON only, no extra text:
+OUTPUT — JSON only, no extra text, no newlines inside strings:
 {
   "regime":     "<RISK_ON|RISK_OFF|DELEVERAGING>",
   "cycle":      "<EARLY_EXPANSION|MID_EXPANSION|LATE_EXPANSION|CONTRACTION|DELEVERAGING>",
   "season":     "<A_GROWTH_INFLATION|B_GROWTH_DISINFLATION|C_STAGFLATION|D_DEFLATION>",
-  "macro_take": "<สรุปแบบ Dalio เป็นภาษาไทยเข้าใจง่าย อธิบายว่าตลาด/เศรษฐกิจอยู่ในช่วงไหน และหุ้นตัวนี้เหมาะหรือไม่ในสภาพแวดล้อมปัจจุบัน ถ้าใช้ศัพท์เทคนิคให้ขยายความในวงเล็บ เป้าหมาย: คนที่ลงทุนอยู่แต่ไม่รู้ศัพท์ขั้นสูงอ่านแล้วเข้าใจทันที>",
-  "key_risk":   "<ความเสี่ยง macro สำคัญที่สุด อธิบายให้นักลงทุนทั่วไปเข้าใจว่าเศรษฐกิจ/ตลาดกำลังเผชิญอะไร ใช้ภาษาไทยตรงไปตรงมา หรือ null>"
+  "macro_take": "<ประโยคเดียว ไม่เกิน 25 คำ ภาษาไทย — บอก regime ปัจจุบันและผลต่อหุ้นนี้ ถ้าใช้ศัพท์ให้ขยายในวงเล็บสั้นๆ>",
+  "key_risk":   "<ประโยคเดียว ไม่เกิน 15 คำ ภาษาไทย — ความเสี่ยง macro หลัก หรือ null>"
 }
 
-กฎ: เขียนภาษาไทยเข้าใจง่าย ถ้าใช้ศัพท์อังกฤษต้องขยายความในวงเล็บทันที ห้ามใช้ RISK_OFF / deleveraging / stagflation โดยไม่อธิบาย ให้บอกแทนว่า เช่น 'ตลาดกำลังปรับตัวลง นักลงทุนหนีไปถือเงินสด (RISK_OFF)' หรือ 'เงินเฟ้อสูงแต่เศรษฐกิจชะลอพร้อมกัน (stagflation)'"""
+กฎเหล็ก: macro_take ต้องเป็น 1 ประโยคเท่านั้น ห้ามขึ้นบรรทัดใหม่ ห้ามใช้เลข 1. 2. 3. ห้ามเกิน 25 คำ"""
 
 _ADVISOR_SYSTEM = """คุณคือ AlphaForge Advisor — ที่ปรึกษาการลงทุนที่ผสาน 2 แนวคิด:
 🎩 Buffett: ลงทุนในธุรกิจดี ราคาถูกกว่ามูลค่าจริง ถือยาว
@@ -376,7 +376,7 @@ def _get_dalio_take(symbol: str, company: str, info: dict) -> dict:
             },
             json={
                 "model": "claude-haiku-4-5-20251001",
-                "max_tokens": 600,          # Dalio JSON is small — 600 more than enough, avoids cut-off
+                "max_tokens": 350,          # Dalio JSON is tiny — regime+cycle+season+1-sentence Thai
                 "temperature": 0,
                 "system": _DALIO_SYSTEM,
                 "messages": [
