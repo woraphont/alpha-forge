@@ -63,9 +63,21 @@ def _format_telegram_message(symbol: str, result: dict) -> str:
     ]
 
     ai_layer = result.get("ai_layer", {})
-    if ai_layer.get("phase") != "PHASE_1_PLACEHOLDER":
-        finbert = ai_layer.get("finbert", 0.5)
-        lines.append(f"• FinBERT:    <code>{finbert:.2f}</code>")
+    finbert_score = ai_layer.get("finbert", 0.5)
+    news_label = ai_layer.get("finbert_label", "NEUTRAL")
+    lines.append(f"• Sentiment:  <code>{finbert_score:.2f}</code> ({news_label})")
+
+    # Buffett section
+    llm_signal = ai_layer.get("llm_signal", "")
+    llm_moat = ai_layer.get("llm_moat", "")
+    llm_reasoning = ai_layer.get("llm_reasoning", "")
+    if llm_reasoning:
+        verdict_icon = {"BULLISH": "🟢", "BEARISH": "🔴", "NEUTRAL": "🟡"}.get(llm_signal, "⚪")
+        lines += [
+            "",
+            f'🎩 <b>Buffett\'s Take</b>  {verdict_icon} {llm_signal} | Moat: <code>{llm_moat}</code>',
+            f"<i>{llm_reasoning}</i>",
+        ]
 
     return "\n".join(lines)
 

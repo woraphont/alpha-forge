@@ -44,13 +44,16 @@ class TestScorer:
         bear_result = calculate_score("AAPL", bear_df, sample_news)
         assert bull_result["score"] > bear_result["score"]
 
-    def test_ai_layer_placeholder_in_phase1(self, flat_df, sample_news):
-        result = calculate_score("AAPL", flat_df, sample_news)
+    def test_ai_layer_in_phase1_sentiment(self, flat_df, sample_news):
+        from unittest.mock import patch
+        mock_response = '{"score": 0.5, "label": "NEUTRAL", "reasoning": "no clear signal"}'
+        with patch("ai.sentiment.route", return_value=mock_response):
+            result = calculate_score("AAPL", flat_df, sample_news)
         ai = result["ai_layer"]
-        assert ai["finbert"] == 0.5
-        assert ai["fear_greed"] == 0.5
+        assert 0.0 <= ai["finbert"] <= 1.0
+        assert ai["dalio_macro"] == 0.5
         assert ai["llm_pattern"] == 0.5
-        assert ai["phase"] == "PHASE_1_PLACEHOLDER"
+        assert ai["phase"] == "PHASE_1_BUFFETT_DALIO"
 
     def test_all_indicators_present(self, bull_df, sample_news):
         result = calculate_score("AAPL", bull_df, sample_news)

@@ -6,7 +6,7 @@ Globals:
   Function:
     Timeout: 300          # 5 min max (yfinance + AI calls)
     MemorySize: 512
-    Runtime: python3.12
+    Runtime: python3.11
     Architectures: [x86_64]
     Environment:
       Variables:
@@ -38,7 +38,7 @@ Resources:
       Description: Analyzes US stock signals (triggered by EventBridge)
       Policies:
         - SSMParameterReadPolicy:
-            ParameterName: "/alpha-forge/*"
+            ParameterName: "alpha-forge/*"
         - DynamoDBCrudPolicy:
             TableName: !Ref SignalsTable
       Events:
@@ -102,12 +102,12 @@ Resources:
       FunctionName: !Sub "alpha-forge-telegram-${Environment}"
       CodeUri: ../../lambdas/telegram/
       Handler: handler.handler
-      Timeout: 60
+      Timeout: 90
       MemorySize: 256
       Description: Telegram webhook — on-demand US stock analysis (any ticker)
       Policies:
         - SSMParameterReadPolicy:
-            ParameterName: "/alpha-forge/*"
+            ParameterName: "alpha-forge/*"
       Events:
         TelegramWebhook:
           Type: Api

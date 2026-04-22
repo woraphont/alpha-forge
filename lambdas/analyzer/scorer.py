@@ -19,29 +19,38 @@ from technical.volatility import calculate_atr
 logger = logging.getLogger(__name__)
 
 
-def _get_ai_scores(symbol: str, df: pd.DataFrame, news: list[dict]) -> dict[str, float]:
+def _get_ai_scores(symbol: str, df: pd.DataFrame, news: list[dict], fundamentals: dict) -> dict[str, float]:
     """
     AI indicator scores.
-    Phase 1: returns neutral placeholders (0.5 = no contribution to score).
-    Phase 2: implements FinBERT + Fear&Greed + LLM Pattern Recognition.
+    - finbert (0.20):     news sentiment via ai_router (BuffettLetters-inspired)
+    - llm_pattern (0.15): Buffett framework via ai_router + fundamentals
+                          (buffett-perspective + ai-investor inspired)
+    - dalio_macro (0.05): Dalio macro regime (debt cycle / inflation / USD)
+                          replaces fear_greed placeholder
+                          Phase 2: add FRED API data (CPI, yield curve, DXY)
+    Phase 4: migrate all AI calls to AWS Bedrock.
     """
-    # TODO Phase 2: implement FinBERT sentiment from news headlines
-    # from ai.finbert import calculate_finbert_sentiment
-    # finbert = calculate_finbert_sentiment(news)
+    from ai.sentiment import analyze_news_sentiment
+    from ai.llm_pattern import analyze_pattern
+    from ai.dalio_macro import analyze_macro
 
-    # TODO Phase 2: implement Fear & Greed Index fetch
-    # from ai.fear_greed import get_fear_greed_score
-    # fear_greed = get_fear_greed_score()
-
-    # TODO Phase 2: implement LLM pattern recognition
-    # from ai.pattern import classify_chart_pattern
-    # llm_pattern = classify_chart_pattern(symbol, df)
+    sentiment = analyze_news_sentiment(symbol, news)
+    pattern = analyze_pattern(symbol, df, fundamentals)
+    dalio = analyze_macro(symbol, df, fundamentals)
 
     return {
-        "finbert": 0.5,       # neutral until Phase 2
-        "fear_greed": 0.5,    # neutral until Phase 2
-        "llm_pattern": 0.5,   # neutral until Phase 2
-        "phase": "PHASE_1_PLACEHOLDER",
+        "finbert": sentiment["score"],          # news sentiment (0.0–1.0)
+        "finbert_label": sentiment["label"],    # BULLISH / BEARISH / NEUTRAL
+        "finbert_source": sentiment["source"],
+        "llm_pattern": pattern["score"],        # Buffett framework score (0.0–1.0)
+        "llm_signal": pattern["signal"],        # BULLISH / NEUTRAL / BEARISH
+        "llm_moat": pattern["moat"],            # WIDE / NARROW / NONE
+        "llm_reasoning": pattern["reasoning"],
+        "dalio_macro": dalio["score"],          # Dalio macro regime score (0.0–1.0)
+        "dalio_regime": dalio["regime"],        # RISK_ON / RISK_OFF / DELEVERAGING
+        "dalio_cycle": dalio["cycle"],          # EXPANSION / CONTRACTION / DELEVERAGING
+        "dalio_bias": dalio["macro_bias"],
+        "phase": "PHASE_1_BUFFETT_DALIO",
     }
 
 
@@ -64,7 +73,7 @@ def _get_regime_multiplier(df: pd.DataFrame) -> tuple[float, str]:
         return 1.0, "SIDEWAYS"
 
 
-def calculate_score(symbol: str, df: pd.DataFrame, news: list[dict]) -> dict[str, Any]:
+def calculate_score(symbol: str, df: pd.DataFrame, news: list[dict], fundamentals: dict | None = None) -> dict[str, Any]:
     """
     Calculate composite signal score for a US stock.
 
@@ -86,8 +95,8 @@ def calculate_score(symbol: str, df: pd.DataFrame, news: list[dict]) -> dict[str
     vol_res      = calculate_volume_ratio(df)
     atr_res      = calculate_atr(df)
 
-    # AI layer (Phase 1 = placeholders)
-    ai_scores    = _get_ai_scores(symbol, df, news)
+    # AI layer
+    ai_scores    = _get_ai_scores(symbol, df, news, fundamentals or {})
     regime_mult, regime = _get_regime_multiplier(df)
 
     # Raw score (before normalization)
@@ -99,9 +108,9 @@ def calculate_score(symbol: str, df: pd.DataFrame, news: list[dict]) -> dict[str
         + macd_res["score"]                          # weight 0.10
         + vwap_res["score"]                          # weight 0.07
         + atr_res["score"]                           # weight 0.03
-        + (ai_scores["finbert"]    - 0.5) * 0.20    # weight 0.20
-        + (ai_scores["fear_greed"] - 0.5) * 0.05    # weight 0.05
-        + (ai_scores["llm_pattern"]- 0.5) * 0.15    # weight 0.15
+        + (ai_scores["finbert"]     - 0.5) * 0.20    # weight 0.20
+        + (ai_scores["dalio_macro"] - 0.5) * 0.05   # weight 0.05 (was fear_greed)
+        + (ai_scores["llm_pattern"] - 0.5) * 0.15   # weight 0.15
     )
 
     # Apply regime multiplier then normalize to [0.0, 1.0]

@@ -31,10 +31,10 @@ create-table:
 test:
 	cd lambdas/analyzer && pip install -r requirements.txt -q
 	cd lambdas/analyzer && pip install pytest -q
-	PYTHONPATH=lambdas/analyzer pytest tests/ -v --tb=short
+	set PYTHONPATH=lambdas/analyzer && python -m pytest tests/ -v --tb=short
 
 test-watch:
-	PYTHONPATH=lambdas/analyzer pytest tests/ -v --tb=short -f
+	set PYTHONPATH=lambdas/analyzer && python -m pytest tests/ -v --tb=short -f
 
 # ───── DEPLOY ─────
 deploy-dev: test

@@ -10,7 +10,7 @@ from typing import Any
 
 import boto3
 
-from fetcher import fetch_stock_data, fetch_news
+from fetcher import fetch_stock_data, fetch_news, fetch_fundamentals
 from scorer import calculate_score
 
 logger = logging.getLogger()
@@ -60,7 +60,8 @@ def lambda_handler(event: dict, context: Any) -> dict:
         try:
             df = fetch_stock_data(symbol)
             news = fetch_news(symbol)
-            result = calculate_score(symbol, df, news)
+            fundamentals = fetch_fundamentals(symbol)
+            result = calculate_score(symbol, df, news, fundamentals)
 
             _save_signal(symbol, result)
             _send_alert_if_needed(symbol, result)

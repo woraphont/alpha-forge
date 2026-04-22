@@ -56,6 +56,61 @@ def fetch_stock_info(symbol: str) -> dict[str, Any]:
     }
 
 
+def fetch_fundamentals(symbol: str) -> dict[str, Any]:
+    """
+    Fetch Buffett-style fundamental metrics for a US stock via yfinance.
+    Inspired by: github.com/Bilovodskyi/ai-investor (Buffett Algorithm)
+
+    Returns:
+        dict with keys: roe, debt_to_equity, operating_margin, current_ratio,
+                        net_income, depreciation, capex, owner_earnings
+        Missing values are returned as None (not all stocks report all fields).
+    """
+    try:
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
+
+        roe = info.get("returnOnEquity")           # e.g. 0.171 = 17.1%
+        debt_to_equity = info.get("debtToEquity")  # e.g. 150 = 1.5x (yfinance returns %)
+        operating_margin = info.get("operatingMargins")
+        current_ratio = info.get("currentRatio")
+        net_income = info.get("netIncomeToCommon")
+
+        # Depreciation + CapEx from cash flow statement
+        try:
+            cashflow = ticker.cashflow
+            depreciation = float(cashflow.loc["Depreciation And Amortization"].iloc[0]) if "Depreciation And Amortization" in cashflow.index else None
+            capex = abs(float(cashflow.loc["Capital Expenditure"].iloc[0])) if "Capital Expenditure" in cashflow.index else None
+        except Exception:
+            depreciation = None
+            capex = None
+
+        # Owner Earnings = Net Income + Depreciation - Maintenance CapEx
+        # Proxy: maintenance capex ≈ 50% of total capex (conservative)
+        owner_earnings = None
+        if net_income and depreciation and capex:
+            owner_earnings = net_income + depreciation - (capex * 0.5)
+
+        result = {
+            "symbol": symbol,
+            "roe": roe,
+            "debt_to_equity": (debt_to_equity / 100) if debt_to_equity else None,  # normalize to ratio
+            "operating_margin": operating_margin,
+            "current_ratio": current_ratio,
+            "net_income": net_income,
+            "depreciation": depreciation,
+            "capex": capex,
+            "owner_earnings": owner_earnings,
+        }
+        logger.info({"action": "fetch_fundamentals", "symbol": symbol, "roe": roe, "de": debt_to_equity})
+        return result
+    except Exception as e:
+        logger.warning({"action": "fetch_fundamentals_failed", "symbol": symbol, "error": str(e)})
+        return {"symbol": symbol, "roe": None, "debt_to_equity": None,
+                "operating_margin": None, "current_ratio": None,
+                "net_income": None, "depreciation": None, "capex": None, "owner_earnings": None}
+
+
 def fetch_news(symbol: str, max_items: int = 5) -> list[dict[str, str]]:
     """
     Fetch recent news headlines for a symbol via yfinance (free, no API key).
