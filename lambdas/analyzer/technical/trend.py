@@ -46,39 +46,71 @@ def calculate_ema(df: pd.DataFrame) -> dict:
 
 def calculate_supertrend(df: pd.DataFrame, period: int = 10, multiplier: float = 3.0) -> dict:
     """
-    Supertrend indicator — ATR-based dynamic trend direction.
+    Supertrend indicator — stateful ATR-based dynamic trend direction.
+
+    Uses carry-forward logic: upper band only moves down, lower band only moves up.
+    Trend flips when close crosses above upper band (→ bull) or below lower band (→ bear).
 
     Score:
-        +0.10 → Supertrend direction = UP (price above support band)
-        -0.10 → Supertrend direction = DOWN (price below resistance band)
+        +0.10 → direction == 1  (bullish — price above support band)
+         0.0  → direction == -1 (bearish — price below resistance band)
+
+    Returns dict with keys: score, direction ("UP"/"DOWN"), support, resistance, atr
     """
     high = df["High"]
     low = df["Low"]
     close = df["Close"]
 
-    # True Range
+    # True Range (uses previous close)
+    prev_close = close.shift(1)
     tr = pd.concat([
         high - low,
-        (high - close.shift(1)).abs(),
-        (low - close.shift(1)).abs(),
+        (high - prev_close).abs(),
+        (low - prev_close).abs(),
     ], axis=1).max(axis=1)
 
     atr = tr.ewm(span=period, adjust=False).mean()
     hl2 = (high + low) / 2
-    upper_band = hl2 + multiplier * atr
-    lower_band = hl2 - multiplier * atr
+    upper_basic = hl2 + multiplier * atr
+    lower_basic = hl2 - multiplier * atr
 
-    current_close = float(close.iloc[-1])
-    current_lower = float(lower_band.iloc[-1])
-    current_upper = float(upper_band.iloc[-1])
+    # Stateful carry-forward bands + direction
+    upper = upper_basic.copy().astype(float)
+    lower = lower_basic.copy().astype(float)
+    direction = pd.Series(1, index=close.index)   # 1=bull, -1=bear
+
+    for i in range(1, len(close)):
+        # Upper band: only moves DOWN (tightens resistance)
+        if close.iat[i - 1] <= upper.iat[i - 1]:
+            upper.iat[i] = min(upper_basic.iat[i], upper.iat[i - 1])
+        else:
+            upper.iat[i] = upper_basic.iat[i]
+
+        # Lower band: only moves UP (raises support floor)
+        if close.iat[i - 1] >= lower.iat[i - 1]:
+            lower.iat[i] = max(lower_basic.iat[i], lower.iat[i - 1])
+        else:
+            lower.iat[i] = lower_basic.iat[i]
+
+        # Direction: flip on cross
+        if direction.iat[i - 1] == -1 and close.iat[i] > upper.iat[i - 1]:
+            direction.iat[i] = 1    # flip to bull
+        elif direction.iat[i - 1] == 1 and close.iat[i] < lower.iat[i - 1]:
+            direction.iat[i] = -1   # flip to bear
+        else:
+            direction.iat[i] = direction.iat[i - 1]
+
+    is_bullish = bool(direction.iloc[-1] == 1)
+    dir_str = "UP" if is_bullish else "DOWN"
+    score = 0.10 if is_bullish else -0.10
+
     current_atr = float(atr.iloc[-1])
-
-    direction = "UP" if current_close > current_lower else "DOWN"
-    score = 0.10 if direction == "UP" else -0.10
+    current_lower = float(lower.iloc[-1])
+    current_upper = float(upper.iloc[-1])
 
     return {
         "score": score,
-        "direction": direction,
+        "direction": dir_str,
         "support": round(current_lower, 2),
         "resistance": round(current_upper, 2),
         "atr": round(current_atr, 2),

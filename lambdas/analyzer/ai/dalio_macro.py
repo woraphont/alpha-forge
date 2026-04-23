@@ -1,5 +1,5 @@
 """
-AlphaForge — Dalio Macro Framework (v2)
+AlphaForge — Dalio Macro Framework (v2, Phase 2)
 Ray Dalio's full macro economic machine analysis for individual stocks.
 
 Sources:
@@ -12,14 +12,17 @@ Sources:
 Complements llm_pattern.py (Buffett micro: company fundamentals)
 with macro-level regime + cycle context.
 
-Used in scorer.py as dalio_macro slot (weight 0.05).
-Phase 2: add FRED API (CPI, Fed Funds Rate, Yield Curve, DXY) for live macro data.
+Phase 2: FRED API integration (CPI, Fed Funds Rate, Yield Curve, Unemployment).
+         dalio_macro moved to metadata-only in scorer.py (display, not scoring).
+Phase 4: migrate AI calls to AWS Bedrock.
 """
 import json
 import logging
+from io import StringIO
 from typing import Any
 
 import pandas as pd
+import requests as _requests
 
 from ai.ai_router import route, TaskTier
 
@@ -140,6 +143,86 @@ Score guide:
 
 
 # ---------------------------------------------------------------------------
+# FRED API — real macro data (Phase 2)
+# ---------------------------------------------------------------------------
+
+_FRED_BASE = "https://fred.stlouisfed.org/graph/fredgraph.csv?id="
+_FRED_TIMEOUT = 5  # seconds per request — fail fast
+
+
+def _fetch_fred_series(series_id: str) -> list[float]:
+    """Fetch latest N values from FRED CSV (no API key required)."""
+    try:
+        resp = _requests.get(f"{_FRED_BASE}{series_id}", timeout=_FRED_TIMEOUT)
+        resp.raise_for_status()
+        df = pd.read_csv(StringIO(resp.text))
+        df.columns = ["date", "value"]
+        df = df[df["value"].astype(str) != "."].dropna()
+        df["value"] = pd.to_numeric(df["value"], errors="coerce")
+        df = df.dropna(subset=["value"])
+        return df["value"].tail(14).tolist()  # last 14 data points
+    except Exception as e:
+        logger.warning({"action": "fred_fetch_failed", "series": series_id, "error": str(e)})
+        return []
+
+
+def _fetch_fred_macro() -> dict[str, Any]:
+    """
+    Fetch key macro indicators from FRED (free, no API key needed for CSV).
+
+    Series used:
+        FEDFUNDS  — Federal Funds Rate (monthly %)
+        T10Y2Y    — 10Y minus 2Y Treasury spread (daily %) — yield curve
+        CPIAUCSL  — CPI All Urban (monthly, level) — compute YoY ourselves
+        UNRATE    — Civilian Unemployment Rate (monthly %)
+    """
+    results: dict[str, Any] = {}
+
+    # Fed Funds Rate
+    ff = _fetch_fred_series("FEDFUNDS")
+    if ff:
+        results["fed_funds_rate"] = round(ff[-1], 2)
+        results["fed_funds_trend"] = "RISING" if len(ff) >= 3 and ff[-1] > ff[-3] else \
+                                     "FALLING" if len(ff) >= 3 and ff[-1] < ff[-3] else "STABLE"
+    else:
+        results["fed_funds_rate"] = None
+        results["fed_funds_trend"] = "UNKNOWN"
+
+    # Yield Curve (10Y-2Y spread)
+    yc = _fetch_fred_series("T10Y2Y")
+    if yc:
+        results["yield_curve"] = round(yc[-1], 3)
+        results["yield_curve_inverted"] = yc[-1] < 0
+    else:
+        results["yield_curve"] = None
+        results["yield_curve_inverted"] = False
+
+    # CPI YoY (need 13 months: current vs 12 months ago)
+    cpi = _fetch_fred_series("CPIAUCSL")
+    if len(cpi) >= 13:
+        cpi_yoy = (cpi[-1] / cpi[-13] - 1) * 100
+        results["cpi_yoy"] = round(cpi_yoy, 2)
+        results["inflation_regime"] = "HIGH" if cpi_yoy > 4.0 else \
+                                       "MODERATE" if cpi_yoy > 2.5 else "LOW"
+    else:
+        results["cpi_yoy"] = None
+        results["inflation_regime"] = "UNKNOWN"
+
+    # Unemployment
+    ur = _fetch_fred_series("UNRATE")
+    if ur:
+        results["unemployment"] = round(ur[-1], 1)
+        results["unemployment_trend"] = "RISING" if len(ur) >= 4 and ur[-1] > ur[-4] else \
+                                        "FALLING" if len(ur) >= 4 and ur[-1] < ur[-4] else "STABLE"
+    else:
+        results["unemployment"] = None
+        results["unemployment_trend"] = "UNKNOWN"
+
+    logger.info({"action": "fred_fetched", **{k: v for k, v in results.items() if v is not None}})
+    return results
+
+
+# ---------------------------------------------------------------------------
 # Context builder
 # ---------------------------------------------------------------------------
 
@@ -225,6 +308,20 @@ def analyze_macro(symbol: str, df: pd.DataFrame, fundamentals: dict[str, Any]) -
     """
     ctx = _build_macro_context(symbol, df, fundamentals)
 
+    # Fetch live FRED macro data (Phase 2)
+    fred = _fetch_fred_macro()
+
+    def _fmt_fred(v: float | None, suffix: str = "") -> str:
+        return f"{v}{suffix}" if v is not None else "N/A"
+
+    yield_curve_note = ""
+    if fred.get("yield_curve") is not None:
+        yc = fred["yield_curve"]
+        if yc < 0:
+            yield_curve_note = f" ⚠️ INVERTED ({yc:+.2f}%) — recession signal"
+        else:
+            yield_curve_note = f" ({yc:+.2f}%) — normal"
+
     prompt = f"""Analyze {symbol} through Ray Dalio's complete macro framework.
 
 STOCK DATA:
@@ -242,21 +339,24 @@ DEBT & VALUATION (corporate debt cycle proxies):
   Operating Margin:{ctx['operating_margin_pct']}
   Current Ratio:   {ctx['current_ratio']}
 
-MACRO CONTEXT (April 2026):
+LIVE MACRO DATA (FRED — April 2026):
+  Fed Funds Rate:  {_fmt_fred(fred.get('fed_funds_rate'), '%')} ({fred.get('fed_funds_trend', 'UNKNOWN')})
+  CPI YoY:         {_fmt_fred(fred.get('cpi_yoy'), '%')} — inflation regime: {fred.get('inflation_regime', 'UNKNOWN')}
+  Yield Curve:     10Y-2Y{yield_curve_note}
+  Unemployment:    {_fmt_fred(fred.get('unemployment'), '%')} ({fred.get('unemployment_trend', 'UNKNOWN')})
+
+BIG PICTURE (April 2026):
   - World Order: Stage 5 → Stage 6 transition (geopolitical disorder rising)
   - USD under pressure, gold outperforming, trade/tech wars escalating
   - AI sector in early bubble stage (Dalio's own assessment, 2025)
-  - Federal debt/GDP at historic highs → Rule 1 violation risk
+  - US federal debt/GDP at historic highs → Rule 1 violation risk
 
 Apply your 5 frameworks:
   1. Which debt cycle stage (deflation 7-stage or inflation 5-stage)?
-  2. Which economic season (A/B/C/D) is this company positioned for?
+  2. Which economic season (A/B/C/D) — use live CPI + Fed rate + yield curve
   3. Does this sector outperform or underperform in the current cycle phase?
   4. Big Cycle stage impact — does world order transition affect this company?
   5. Three Core Rules check: is this company's debt rising faster than income?
-
-Note: FRED live data (CPI, yield curve, DXY) not yet available (Phase 2).
-      Derive cycle position from company fundamentals + sector knowledge.
 
 Provide your full macro regime verdict for {symbol}."""
 

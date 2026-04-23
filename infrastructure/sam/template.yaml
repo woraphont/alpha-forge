@@ -16,6 +16,7 @@ Globals:
         BUY_THRESHOLD: "0.55"
         WATCH_THRESHOLD: "0.35"
         LOG_LEVEL: INFO
+        AI_ENABLED: "true"
 
 Parameters:
   Environment:
@@ -105,9 +106,19 @@ Resources:
       Timeout: 90
       MemorySize: 256
       Description: Telegram webhook — on-demand US stock analysis (any ticker)
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: !Ref SignalsTable
       Policies:
         - SSMParameterReadPolicy:
             ParameterName: "alpha-forge/*"
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:Query
+                - dynamodb:GetItem
+              Resource: !GetAtt SignalsTable.Arn
       Events:
         TelegramWebhook:
           Type: Api

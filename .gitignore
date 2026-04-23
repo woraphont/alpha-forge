@@ -13,6 +13,7 @@ dist/
 *.egg-info/
 
 # SAM build
+.aws-sam/
 infrastructure/sam/.aws-sam/
 
 # Terraform

@@ -63,7 +63,9 @@ def fetch_fundamentals(symbol: str) -> dict[str, Any]:
 
     Returns:
         dict with keys: roe, debt_to_equity, operating_margin, current_ratio,
-                        net_income, depreciation, capex, owner_earnings
+                        net_income, depreciation, capex, owner_earnings,
+                        sector, industry, country, beta, pe_ratio,
+                        revenue_growth, net_margin
         Missing values are returned as None (not all stocks report all fields).
     """
     try:
@@ -75,6 +77,13 @@ def fetch_fundamentals(symbol: str) -> dict[str, Any]:
         operating_margin = info.get("operatingMargins")
         current_ratio = info.get("currentRatio")
         net_income = info.get("netIncomeToCommon")
+        net_margin = info.get("profitMargins")
+        revenue_growth = info.get("revenueGrowth")
+        pe_ratio = info.get("trailingPE")
+        beta = info.get("beta")
+        sector = info.get("sector", "Unknown")
+        industry = info.get("industry", "Unknown")
+        country = info.get("country", "US")
 
         # Depreciation + CapEx from cash flow statement
         try:
@@ -96,19 +105,31 @@ def fetch_fundamentals(symbol: str) -> dict[str, Any]:
             "roe": roe,
             "debt_to_equity": (debt_to_equity / 100) if debt_to_equity else None,  # normalize to ratio
             "operating_margin": operating_margin,
+            "net_margin": net_margin,
             "current_ratio": current_ratio,
+            "revenue_growth": revenue_growth,
+            "pe_ratio": pe_ratio,
+            "beta": beta,
+            "sector": sector,
+            "industry": industry,
+            "country": country,
             "net_income": net_income,
             "depreciation": depreciation,
             "capex": capex,
             "owner_earnings": owner_earnings,
         }
-        logger.info({"action": "fetch_fundamentals", "symbol": symbol, "roe": roe, "de": debt_to_equity})
+        logger.info({"action": "fetch_fundamentals", "symbol": symbol, "roe": roe, "de": debt_to_equity,
+                     "sector": sector, "pe": pe_ratio})
         return result
     except Exception as e:
         logger.warning({"action": "fetch_fundamentals_failed", "symbol": symbol, "error": str(e)})
-        return {"symbol": symbol, "roe": None, "debt_to_equity": None,
-                "operating_margin": None, "current_ratio": None,
-                "net_income": None, "depreciation": None, "capex": None, "owner_earnings": None}
+        return {
+            "symbol": symbol, "roe": None, "debt_to_equity": None,
+            "operating_margin": None, "net_margin": None, "current_ratio": None,
+            "revenue_growth": None, "pe_ratio": None, "beta": None,
+            "sector": "Unknown", "industry": "Unknown", "country": "US",
+            "net_income": None, "depreciation": None, "capex": None, "owner_earnings": None,
+        }
 
 
 def fetch_news(symbol: str, max_items: int = 5) -> list[dict[str, str]]:

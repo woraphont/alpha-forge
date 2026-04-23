@@ -50,6 +50,29 @@ class TestSupertrend:
         result = calculate_supertrend(bull_df)
         assert result["score"] in [0.10, -0.10]
 
+    def test_bull_series_is_up(self, bull_df):
+        """A clearly uptrending series should produce direction == UP."""
+        result = calculate_supertrend(bull_df)
+        assert result["direction"] == "UP"
+        assert result["score"] == 0.10
+
+    def test_bear_series_is_down(self, bear_df):
+        """A clearly downtrending series should produce direction == DOWN."""
+        result = calculate_supertrend(bear_df)
+        assert result["direction"] == "DOWN"
+        assert result["score"] == -0.10
+
+    def test_bull_bear_produce_different_scores(self, bull_df, bear_df):
+        """Bull and bear series must give different Supertrend scores (stateful = not all same)."""
+        bull_result = calculate_supertrend(bull_df)
+        bear_result = calculate_supertrend(bear_df)
+        assert bull_result["score"] != bear_result["score"]
+        assert bull_result["direction"] != bear_result["direction"]
+
+    def test_atr_is_positive(self, flat_df):
+        result = calculate_supertrend(flat_df)
+        assert result["atr"] > 0
+
 
 class TestRSI:
     def test_returns_required_keys(self, flat_df):

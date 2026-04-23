@@ -16,7 +16,7 @@ from scorer import calculate_score
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-WATCHLIST = os.environ.get("WATCHLIST", "AAPL,MSFT,NVDA,GOOGL,TSLA,SPY").split(",")
+WATCHLIST = os.environ.get("WATCHLIST", "AAPL,MSFT,NVDA,GOOGL,TSLA,SPY,META,AMZN,AMD,QQQ").split(",")
 DYNAMODB_TABLE = os.environ.get("DYNAMODB_TABLE", "alpha-signals")
 STRONG_BUY_THRESHOLD = float(os.environ.get("STRONG_BUY_THRESHOLD", "0.75"))
 BUY_THRESHOLD = float(os.environ.get("BUY_THRESHOLD", "0.55"))
@@ -53,6 +53,15 @@ def lambda_handler(event: dict, context: Any) -> dict:
     trigger = event.get("source", "manual")
     logger.info(json.dumps({"action": "start", "trigger": trigger, "watchlist": WATCHLIST}))
 
+    # Fetch SPY once for Relative Strength bonus (all symbols compare vs SPY)
+    spy_df = None
+    if "SPY" in WATCHLIST:
+        try:
+            spy_df = fetch_stock_data("SPY", period="2mo")
+            logger.info(json.dumps({"action": "spy_fetched", "rows": len(spy_df)}))
+        except Exception as e:
+            logger.warning(json.dumps({"action": "spy_fetch_failed", "error": str(e)}))
+
     results = []
     errors = []
 
@@ -61,7 +70,7 @@ def lambda_handler(event: dict, context: Any) -> dict:
             df = fetch_stock_data(symbol)
             news = fetch_news(symbol)
             fundamentals = fetch_fundamentals(symbol)
-            result = calculate_score(symbol, df, news, fundamentals)
+            result = calculate_score(symbol, df, news, fundamentals, spy_df=spy_df)
 
             _save_signal(symbol, result)
             _send_alert_if_needed(symbol, result)
